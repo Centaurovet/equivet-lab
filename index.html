@@ -585,6 +585,7 @@
         <span id="modelo-badge">Entrar</span> ⚙
       </span>
       <button class="btn btn-secondary" onclick="resumoOffline()">Resumo offline</button>
+      <button class="btn btn-secondary" id="btn-salvar" onclick="salvarExame()">💾 Salvar exame</button>
       <button class="btn btn-secondary" id="btn-pdf" onclick="abrirPicker()">📄 Importar PDF</button>
       <button class="btn btn-primary" id="btn-ia" onclick="analisarIA()">⚡ Analisar por IA</button>
     </div>
@@ -688,6 +689,84 @@ async function getSessionToken() {
     const { data: { session } } = await window.supabase.auth.getSession();
     return (session && session.access_token) || null;
   } catch (e) { return null; }
+}
+
+/* ============================================================
+   INTEGRAÇÃO COM O EQUIVET CLÍNICA (exames vinculáveis)
+   ============================================================ */
+// Cada abertura do Lab é um "exame" (id estável para upsert idempotente).
+const EXAME_LOCAL_ID = 'ex_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+// Vínculo com um atendimento do Clínica (via ?atend=<local_id>), ou null (avulso).
+let ATEND_LINK = null;
+
+// Lê a sessão do localStorage SEM chamar getSession() (evita o lock que trava).
+function getSessaoLS() {
+  for (let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if (k && k.includes('auth-token')) {
+      try {
+        let v = JSON.parse(localStorage.getItem(k));
+        if (Array.isArray(v)) v = v[0];
+        const s = v && (v.currentSession || v);
+        const token = s && s.access_token;
+        const userId = s && s.user && s.user.id;
+        if (token && userId) return { token, userId };
+      } catch(e){}
+    }
+  }
+  return null;
+}
+
+// Busca o contexto do atendimento vinculado e monta o banner.
+async function carregarVinculoAtendimento(atendId, prefillPac) {
+  ATEND_LINK = { local_id: atendId, paciente: prefillPac || '', contexto: '' };
+  if (prefillPac) { const el=document.getElementById('pac_nome'); if (el && !el.value) el.value = prefillPac; }
+  try {
+    const { data, error } = await window.supabase.from('atendimentos')
+      .select('paciente_nome,queixa,prontuario_texto').eq('local_id', atendId).limit(1);
+    if (!error && data && data.length) {
+      const a = data[0];
+      ATEND_LINK.paciente = a.paciente_nome || prefillPac || '';
+      ATEND_LINK.contexto = [a.queixa ? ('Queixa principal: ' + a.queixa) : '', a.prontuario_texto || ''].filter(Boolean).join('\n');
+      if (a.paciente_nome) { const el=document.getElementById('pac_nome'); if (el && !el.value) el.value = a.paciente_nome; salvar(); }
+    }
+  } catch(e){ /* segue com o prefill básico */ }
+  mostrarBannerVinculo();
+}
+
+function mostrarBannerVinculo() {
+  if (!ATEND_LINK || document.getElementById('banner-vinculo')) return;
+  const b = document.createElement('div');
+  b.id = 'banner-vinculo';
+  b.style.cssText = 'background:#1e2a1e;border-left:3px solid #7EB8A4;color:#CfeAd0;padding:8px 16px;font-size:13px;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:8px';
+  b.innerHTML = '🔗 Exame vinculado ao atendimento de <strong>' + (ATEND_LINK.paciente || 'paciente') + '</strong> no EquiVet Clínica. Ao salvar, ele aparecerá no prontuário.';
+  document.body.insertBefore(b, document.body.firstChild);
+}
+
+// Salva/atualiza o exame no Supabase. laudoTexto opcional (só após IA).
+async function salvarExame(laudoTexto) {
+  const sess = getSessaoLS();
+  if (!sess) { mostrarToast('Entre em ⚙ Conta para salvar o exame'); abrirConfig(); return false; }
+  const dados = coletarDados();
+  if (Object.keys(dados.valores).length === 0) { mostrarToast('Preencha ao menos um parâmetro'); return false; }
+  const row = {
+    local_id: EXAME_LOCAL_ID,
+    atendimento_local_id: ATEND_LINK ? ATEND_LINK.local_id : null,
+    veterinario_id: sess.userId,
+    paciente_nome: dados.paciente.nome || (ATEND_LINK && ATEND_LINK.paciente) || null,
+    proprietario_nome: dados.paciente.proprietario || null,
+    tipo: 'sangue',
+    data_coleta: dados.paciente.data || null,
+    valores: dados.valores,
+    alteracoes: listarAlteracoes(),
+  };
+  if (laudoTexto !== undefined) row.laudo_ia = laudoTexto;
+  try {
+    const { error } = await window.supabase.from('exames').upsert(row, { onConflict: 'veterinario_id,local_id' });
+    if (error) { mostrarToast('Falha ao salvar: ' + error.message); return false; }
+    mostrarToast(ATEND_LINK ? '✓ Exame salvo no atendimento' : '✓ Exame salvo');
+    return true;
+  } catch(e){ mostrarToast('Sem conexão para salvar'); return false; }
 }
 
 /* ============================================================
@@ -1007,7 +1086,10 @@ async function analisarIA() {
   abrirModal('Análise por IA', `<div class="ai-loading"><div class="spinner"></div><span>Consultando ${MODELO_LABEL} (com literatura Smith/Adams)...</span></div>`);
 
   // Quadro completo (paciente + valores + alterações) e resumo das alterações (query do RAG)
-  const quadro = montarPrompt(dados, alt);
+  let quadro = montarPrompt(dados, alt);
+  if (ATEND_LINK && ATEND_LINK.contexto) {
+    quadro = 'CONTEXTO DO ATENDIMENTO (EquiVet Clínica — considere na interpretação):\n' + ATEND_LINK.contexto + '\n\n' + quadro;
+  }
   const alteracoes = alt.length
     ? alt.map(a => `${a.estado}: ${a.nome} = ${a.valor} ${a.unidade} (ref ${a.ref})`).join('; ')
     : '';
@@ -1044,6 +1126,7 @@ async function analisarIA() {
       : 'Sem correspondência forte na literatura indexada — interpretação clínica geral.';
     const html = `${markdownToHTML(texto)}<div class="disclaimer">${selo} Gerado por ${MODELO_LABEL}. Ferramenta de apoio diagnóstico — não substitui avaliação clínica completa pelo médico-veterinário.</div>`;
     abrirModal('Análise por IA', html);
+    salvarExame(texto);   // persiste o exame + laudo (vinculado ao atendimento, se houver)
   } catch (e) {
     const html = `<div class="error-box"><strong>Erro na chamada IA:</strong><br>${e.message}</div>
       <p style="margin-top:12px">Verifique:<br>· que você está conectado (⚙ Conta)<br>· sua conexão com a internet</p>`;
@@ -1274,6 +1357,7 @@ function aplicarResultadoPDF(resultado, nomeArquivo) {
   html += `<div class="disclaimer">Valores extraídos automaticamente do PDF por ${MODELO_LABEL}. <strong>Confira no formulário</strong> antes de basear conduta. Ferramenta de apoio — não substitui avaliação clínica.</div>`;
 
   abrirModal('PDF importado · Análise', html);
+  salvarExame(resultado.interpretacao_clinica || undefined);   // persiste o exame extraído
 }
 
 /* ============================================================
@@ -1334,6 +1418,13 @@ document.addEventListener('DOMContentLoaded', () => {
   atualizarBadgeSessao();
   // Reage a login/logout feitos em outra aba do mesmo domínio (ex.: no Clínica)
   window.supabase.auth.onAuthStateChange(() => atualizarBadgeSessao());
+
+  // Vínculo com atendimento do Clínica: ?atend=<local_id>&pac=<nome>
+  const params = new URLSearchParams(location.search);
+  const atend = params.get('atend');
+  const pac   = params.get('pac');
+  if (pac) { const el=document.getElementById('pac_nome'); if (el && !el.value) el.value = pac; salvar(); }
+  if (atend) { carregarVinculoAtendimento(atend, pac); }
 });
 
 // Fecha modal clicando fora
