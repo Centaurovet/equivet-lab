@@ -1028,6 +1028,11 @@ async function analisarIA() {
       abrirModal('Sessão expirada', `<p>Sua sessão expirou. <button class="btn btn-primary" onclick="fecharModal();abrirConfig()">Entrar novamente</button></p>`);
       return;
     }
+    if (resp.status === 429) {
+      const j = await resp.json().catch(()=>({}));
+      abrirModal('Limite do plano gratuito', `<div class="error-box">${j.detail || 'Você atingiu o limite de consultas de IA do plano gratuito.'}</div><p style="margin-top:12px">O plano <strong>Premium</strong> libera consultas ilimitadas.</p>`);
+      return;
+    }
     if (!resp.ok) {
       const errText = await resp.text().catch(()=> '');
       throw new Error(`HTTP ${resp.status}${errText ? ': ' + errText.slice(0,200) : ''}`);
@@ -1163,6 +1168,10 @@ async function chamarClaudeComPDF(base64) {
 
   if (resp.status === 401) {
     throw new Error('Sessão expirada. Entre novamente em ⚙ Conta.');
+  }
+  if (resp.status === 429) {
+    const j = await resp.json().catch(()=>({}));
+    throw new Error(j.detail || 'Limite de consultas de IA do plano gratuito atingido. Assine o Premium para consultas ilimitadas.');
   }
   if (!resp.ok) {
     const errText = await resp.text().catch(()=> '');
