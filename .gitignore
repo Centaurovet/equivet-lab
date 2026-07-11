@@ -1,0 +1,9 @@
+# Metadata do macOS
+._*
+.DS_Store
+
+# Launcher Windows (não usado no GitHub Pages)
+*.bat
+
+# Cópia local de trabalho (o app publicado é o index.html)
+equivet_lab.html

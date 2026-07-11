@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EquiVet Lab</title>
+  <meta name="description" content="EquiVet Lab — interpretação de hemograma e bioquímico equino, offline com análise por IA opcional.">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    // Mesmo projeto/publishable key do EquiVet Clínica → sessão compartilhada
+    // (mesma origem em centaurovet.com.br: o login feito no Clínica vale aqui).
+    const SUPABASE_URL = 'https://lbtmdrhbhwvrytttevyw.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_w2ePaCDxExkCk4hKiszgyA_oQ6_rZt6';
+    window.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  </script>
+  <style>
+    /* ============== RESET + BASE ============== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: #F4F1EA;
+      color: #1A1A1A;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ============== HEADER ============== */
+    .header {
+      background: #0E0E0E;
+      color: #E8E0D0;
+      padding: 18px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 2px solid #C9A84C;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-mark {
+      width: 38px; height: 38px;
+      border: 1.5px solid #C9A84C;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 600;
+      font-size: 20px;
+      color: #C9A84C;
+    }
+    .brand-text h1 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 500;
+      font-size: 22px;
+      letter-spacing: 0.3px;
+      line-height: 1;
+    }
+    .brand-text .module {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #C9A84C;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .icon-btn {
+      background: transparent;
+      border: 1px solid #3a3a3a;
+      color: #E8E0D0;
+      padding: 7px 14px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+    .icon-btn:hover { border-color: #C9A84C; color: #C9A84C; }
+
+    /* ============== PATIENT BAR ============== */
+    .patient-bar {
+      background: #FAF8F2;
+      border-bottom: 1px solid #E0DAC8;
+      padding: 14px 28px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px 18px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .field label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #6E6655;
+    }
+    .field input, .field select, .field textarea {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      padding: 6px 8px;
+      border: 1px solid #D5CFB8;
+      background: #FFFFFF;
+      border-radius: 3px;
+      color: #1A1A1A;
+      transition: border-color 0.15s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none;
+      border-color: #C9A84C;
+      box-shadow: 0 0 0 2px rgba(201,168,76,0.15);
+    }
+
+    /* ============== TABS ============== */
+    .tabs {
+      display: flex;
+      gap: 0;
+      background: #FAF8F2;
+      padding: 0 28px;
+      border-bottom: 1px solid #E0DAC8;
+      overflow-x: auto;
+    }
+    .tab {
+      background: transparent;
+      border: none;
+      padding: 14px 22px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.4px;
+      color: #6E6655;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .tab:hover { color: #1A1A1A; }
+    .tab.active {
+      color: #1A1A1A;
+      border-bottom-color: #C9A84C;
+      font-weight: 600;
+    }
+
+    /* ============== MAIN CONTENT ============== */
+    .main {
+      padding: 24px 28px 80px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 500;
+      font-size: 20px;
+      color: #1A1A1A;
+      margin-bottom: 4px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #E0DAC8;
+    }
+    .section-subtitle {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: #8E8470;
+      text-transform: uppercase;
+      margin-top: 18px;
+      margin-bottom: 10px;
+    }
+    .section-subtitle:first-of-type { margin-top: 12px; }
+
+    /* ============== PARAMETER GRID ============== */
+    .param-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 8px;
+    }
+    .param {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 12px;
+      background: #FFFFFF;
+      border: 1px solid #E0DAC8;
+      border-radius: 4px;
+      border-left: 3px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .param-info {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .param-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1A1A1A;
+    }
+    .param-ref {
+      font-family: 'DM Mono', monospace;
+      font-size: 10.5px;
+      color: #8E8470;
+      margin-top: 1px;
+    }
+    .param-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .param input {
+      width: 78px;
+      padding: 5px 7px;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      text-align: right;
+      border: 1px solid #D5CFB8;
+      background: #FAF8F2;
+      border-radius: 3px;
+    }
+    .param input:focus {
+      outline: none;
+      border-color: #C9A84C;
+      background: #FFFFFF;
+    }
+    .param-unit {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: #8E8470;
+      min-width: 42px;
+    }
+    .param.low    { border-left-color: #4A86C5; background: #F0F5FB; }
+    .param.normal { border-left-color: #6FA67C; }
+    .param.high   { border-left-color: #C25450; background: #FBF1F0; }
+    .param.crit   { border-left-color: #8B2522; background: #F9E5E3; }
+    .param-flag {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      padding: 2px 5px;
+      border-radius: 2px;
+      margin-left: 4px;
+      min-width: 22px;
+      text-align: center;
+    }
+    .param.low    .param-flag { background: #4A86C5; color: white; }
+    .param.high   .param-flag { background: #C25450; color: white; }
+    .param.crit   .param-flag { background: #8B2522; color: white; }
+    .param.normal .param-flag { background: #6FA67C; color: white; }
+
+    /* ============== ACTION BAR ============== */
+    .action-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #0E0E0E;
+      border-top: 1.5px solid #C9A84C;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      z-index: 50;
+      flex-wrap: wrap;
+    }
+    .summary {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: #E8E0D0;
+    }
+    .summary span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .summary .dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    }
+    .summary .dot.low    { background: #4A86C5; }
+    .summary .dot.normal { background: #6FA67C; }
+    .summary .dot.high   { background: #C25450; }
+    .summary .dot.crit   { background: #8B2522; }
+
+    .actions { display: flex; gap: 8px; }
+    .btn {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary {
+      background: transparent;
+      color: #E8E0D0;
+      border: 1px solid #3a3a3a;
+    }
+    .btn-secondary:hover { border-color: #C9A84C; color: #C9A84C; }
+    .btn-primary {
+      background: #C9A84C;
+      color: #0E0E0E;
+    }
+    .btn-primary:hover { background: #D9B85C; }
+    .btn-primary:disabled { background: #5a5142; color: #999; cursor: not-allowed; }
+
+    /* ============== MODAL ============== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(14,14,14,0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #FAF8F2;
+      max-width: 760px;
+      width: 100%;
+      max-height: 88vh;
+      overflow-y: auto;
+      border-radius: 6px;
+      border-top: 3px solid #C9A84C;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 24px;
+      border-bottom: 1px solid #E0DAC8;
+    }
+    .modal-header h2 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 500;
+      font-size: 22px;
+      color: #1A1A1A;
+    }
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 24px;
+      color: #6E6655;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-body {
+      padding: 22px 24px;
+    }
+    .modal-body p { margin-bottom: 10px; line-height: 1.65; }
+    .modal-body h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 600;
+      font-size: 17px;
+      color: #1A1A1A;
+      margin-top: 16px;
+      margin-bottom: 6px;
+    }
+    .modal-body ul { padding-left: 22px; margin: 6px 0 12px; }
+    .modal-body li { margin-bottom: 4px; }
+    .ai-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 40px 20px;
+      color: #6E6655;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+    }
+    .ai-loading .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid #E0DAC8;
+      border-top-color: #C9A84C;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .disclaimer {
+      background: #FBF6E4;
+      border-left: 3px solid #C9A84C;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #5A5240;
+      margin-top: 14px;
+      border-radius: 0 4px 4px 0;
+      line-height: 1.55;
+    }
+    .api-key-input {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .api-key-input label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #6E6655;
+    }
+    .api-key-input input {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      padding: 8px 10px;
+      border: 1px solid #D5CFB8;
+      background: white;
+      border-radius: 3px;
+    }
+    .error-box {
+      background: #FBF1F0;
+      border-left: 3px solid #C25450;
+      padding: 10px 14px;
+      color: #8B2522;
+      font-size: 13px;
+      border-radius: 0 4px 4px 0;
+      margin-top: 10px;
+    }
+
+    /* ============== PRINT ============== */
+    @media print {
+      body { background: white; }
+      .header, .action-bar, .tabs, .header-actions { display: none !important; }
+      .tabs ~ .main .panel { display: block !important; page-break-before: auto; }
+      .patient-bar { background: white; border-bottom: 2px solid #1A1A1A; }
+      .param { break-inside: avoid; }
+    }
+
+    /* ============== RESPONSIVE ============== */
+    @media (max-width: 640px) {
+      .header { padding: 14px 16px; }
+      .patient-bar { padding: 12px 16px; }
+      .tabs { padding: 0 8px; }
+      .tab { padding: 12px 14px; font-size: 12px; }
+      .main { padding: 18px 16px 110px; }
+      .action-bar { padding: 12px 16px; }
+      .param-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============== HEADER ============== -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-mark">E</div>
+      <div class="brand-text">
+        <h1>EquiVet Lab</h1>
+        <div class="module">Hemograma & Bioquímico</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="limparTudo()">Limpar</button>
+      <button class="icon-btn" onclick="exportarJSON()">Exportar</button>
+      <button class="icon-btn" onclick="window.print()">Imprimir</button>
+      <button class="icon-btn" onclick="abrirConfig()">⚙ Conta</button>
+    </div>
+  </header>
+
+  <!-- ============== PATIENT BAR ============== -->
+  <section class="patient-bar">
+    <div class="field">
+      <label>Paciente</label>
+      <input type="text" id="pac_nome" placeholder="Nome do animal">
+    </div>
+    <div class="field">
+      <label>Espécie / Raça</label>
+      <input type="text" id="pac_raca" value="Equino">
+    </div>
+    <div class="field">
+      <label>Idade (anos)</label>
+      <input type="number" id="pac_idade" min="0" max="40" step="0.5">
+    </div>
+    <div class="field">
+      <label>Sexo</label>
+      <select id="pac_sexo">
+        <option value="">—</option>
+        <option>Macho inteiro</option>
+        <option>Castrado</option>
+        <option>Fêmea</option>
+        <option>Égua prenhe</option>
+        <option>Égua lactante</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Peso (kg)</label>
+      <input type="number" id="pac_peso" min="0" max="1500" step="1">
+    </div>
+    <div class="field">
+      <label>Proprietário</label>
+      <input type="text" id="pac_proprietario">
+    </div>
+    <div class="field">
+      <label>Data da coleta</label>
+      <input type="date" id="pac_data">
+    </div>
+    <div class="field">
+      <label>Histórico clínico breve</label>
+      <input type="text" id="pac_historico" placeholder="Ex: apatia há 3 dias, febre 39.2°C">
+    </div>
+  </section>
+
+  <!-- ============== TABS ============== -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="hemograma" onclick="trocarAba(this)">Hemograma</button>
+    <button class="tab" data-tab="bioquimico" onclick="trocarAba(this)">Bioquímico</button>
+  </nav>
+
+  <!-- ============== MAIN ============== -->
+  <main class="main">
+
+    <!-- HEMOGRAMA -->
+    <div class="panel active" id="panel-hemograma">
+      <h2 class="section-title">Hemograma</h2>
+
+      <div class="section-subtitle">Eritrograma (série vermelha)</div>
+      <div class="param-grid" id="grid-eritrograma"></div>
+
+      <div class="section-subtitle">Leucograma (série branca)</div>
+      <div class="param-grid" id="grid-leucograma"></div>
+
+      <div class="section-subtitle">Plaquetas e proteínas</div>
+      <div class="param-grid" id="grid-plaquetas"></div>
+    </div>
+
+    <!-- BIOQUÍMICO -->
+    <div class="panel" id="panel-bioquimico">
+      <h2 class="section-title">Perfil bioquímico</h2>
+
+      <div class="section-subtitle">Função renal</div>
+      <div class="param-grid" id="grid-renal"></div>
+
+      <div class="section-subtitle">Função hepática</div>
+      <div class="param-grid" id="grid-hepatico"></div>
+
+      <div class="section-subtitle">Marcadores musculares</div>
+      <div class="param-grid" id="grid-muscular"></div>
+
+      <div class="section-subtitle">Proteínas</div>
+      <div class="param-grid" id="grid-proteinas"></div>
+
+      <div class="section-subtitle">Eletrólitos</div>
+      <div class="param-grid" id="grid-eletrolitos"></div>
+
+      <div class="section-subtitle">Metabólico</div>
+      <div class="param-grid" id="grid-metabolico"></div>
+    </div>
+  </main>
+
+  <!-- ============== ACTION BAR ============== -->
+  <div class="action-bar">
+    <div class="summary" id="summary">
+      <span><span class="dot low"></span><span id="cnt-low">0</span> abaixo</span>
+      <span><span class="dot normal"></span><span id="cnt-normal">0</span> normais</span>
+      <span><span class="dot high"></span><span id="cnt-high">0</span> elevados</span>
+      <span><span class="dot crit"></span><span id="cnt-crit">0</span> críticos</span>
+    </div>
+    <div class="actions" style="align-items:center">
+      <span onclick="abrirConfig()" title="Conta / login" style="font-family:'DM Mono',monospace;font-size:11px;color:#8E8470;letter-spacing:0.5px;cursor:pointer;padding:4px 8px;border:1px solid #3a3a3a;border-radius:3px;transition:border-color 0.15s" onmouseover="this.style.borderColor='#C9A84C'" onmouseout="this.style.borderColor='#3a3a3a'">
+        <span id="modelo-badge">Entrar</span> ⚙
+      </span>
+      <button class="btn btn-secondary" onclick="resumoOffline()">Resumo offline</button>
+      <button class="btn btn-secondary" id="btn-pdf" onclick="abrirPicker()">📄 Importar PDF</button>
+      <button class="btn btn-primary" id="btn-ia" onclick="analisarIA()">⚡ Analisar por IA</button>
+    </div>
+  </div>
+
+  <!-- Hidden file input para PDF -->
+  <input type="file" id="pdf-input" accept="application/pdf,.pdf" style="display:none" onchange="processarPDF(event)">
+
+  <!-- ============== MODAL ============== -->
+  <div class="modal-backdrop" id="modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Análise</h2>
+        <button class="modal-close" onclick="fecharModal()">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   VALORES DE REFERÊNCIA — EQUINO ADULTO
+   Fontes consolidadas: Smith Large Animal Surgery,
+   Adams Claudicación en el Caballo, manuais AAEP.
+   crit = limites críticos que disparam alerta vermelho intenso.
+   ============================================================ */
+const PARAMS = {
+  hemograma: {
+    eritrograma: [
+      { id:'rbc',  nome:'Hemácias',         unidade:'×10⁶/µL', min:6.5,  max:12.5, crit_min:4.0,  crit_max:14.0 },
+      { id:'hb',   nome:'Hemoglobina',      unidade:'g/dL',    min:11.0, max:19.0, crit_min:7.0,  crit_max:22.0 },
+      { id:'ht',   nome:'Hematócrito',      unidade:'%',       min:32,   max:53,   crit_min:20,   crit_max:62 },
+      { id:'vcm',  nome:'VCM',              unidade:'fL',      min:36,   max:52 },
+      { id:'hcm',  nome:'HCM',              unidade:'pg',      min:12.3, max:19.7 },
+      { id:'chcm', nome:'CHCM',             unidade:'g/dL',    min:31,   max:37 },
+      { id:'rdw',  nome:'RDW',              unidade:'%',       min:17,   max:21 },
+    ],
+    leucograma: [
+      { id:'wbc',     nome:'Leucócitos totais',     unidade:'/µL', min:5400, max:14300, crit_min:2000, crit_max:25000 },
+      { id:'neut_s',  nome:'Neutrófilos segmentados', unidade:'/µL', min:2300, max:8600 },
+      { id:'neut_b',  nome:'Neutrófilos bastonetes',  unidade:'/µL', min:0,    max:100 },
+      { id:'linf',    nome:'Linfócitos',            unidade:'/µL', min:1500, max:7700 },
+      { id:'mono',    nome:'Monócitos',             unidade:'/µL', min:0,    max:1000 },
+      { id:'eos',     nome:'Eosinófilos',           unidade:'/µL', min:0,    max:1000 },
+      { id:'baso',    nome:'Basófilos',             unidade:'/µL', min:0,    max:300 },
+    ],
+    plaquetas: [
+      { id:'plt',  nome:'Plaquetas',     unidade:'×10³/µL', min:100, max:350, crit_min:40, crit_max:700 },
+      { id:'pt',   nome:'Proteína total (refratômetro)', unidade:'g/dL', min:5.7, max:8.0 },
+      { id:'fib',  nome:'Fibrinogênio',  unidade:'mg/dL',   min:100, max:400, crit_max:800 },
+    ],
+  },
+  bioquimico: {
+    renal: [
+      { id:'ureia',  nome:'Ureia',       unidade:'mg/dL', min:10,  max:25,  crit_max:80 },
+      { id:'creat',  nome:'Creatinina',  unidade:'mg/dL', min:1.0, max:2.2, crit_max:5.0 },
+    ],
+    hepatico: [
+      { id:'ast',   nome:'AST (TGO)',             unidade:'U/L',   min:138, max:409, crit_max:1000 },
+      { id:'ggt',   nome:'GGT',                   unidade:'U/L',   min:5,   max:24,  crit_max:80 },
+      { id:'alp',   nome:'Fosfatase alcalina',    unidade:'U/L',   min:109, max:352 },
+      { id:'bt',    nome:'Bilirrubina total',     unidade:'mg/dL', min:0.5, max:2.5, crit_max:8.0 },
+      { id:'bd',    nome:'Bilirrubina direta',    unidade:'mg/dL', min:0,   max:0.4 },
+    ],
+    muscular: [
+      { id:'ck',  nome:'CK (creatina quinase)', unidade:'U/L', min:100, max:400,  crit_max:5000 },
+      { id:'ldh', nome:'LDH',                   unidade:'U/L', min:162, max:412 },
+    ],
+    proteinas: [
+      { id:'pt_b',  nome:'Proteína total (bioquímica)', unidade:'g/dL', min:5.7, max:8.0 },
+      { id:'alb',   nome:'Albumina',  unidade:'g/dL', min:2.6, max:3.7, crit_min:1.5 },
+      { id:'glob',  nome:'Globulinas', unidade:'g/dL', min:2.6, max:4.0 },
+    ],
+    eletrolitos: [
+      { id:'na',    nome:'Sódio',          unidade:'mEq/L', min:132,  max:146,  crit_min:125, crit_max:160 },
+      { id:'k',     nome:'Potássio',       unidade:'mEq/L', min:2.4,  max:4.7,  crit_min:2.0, crit_max:6.0 },
+      { id:'cl',    nome:'Cloro',          unidade:'mEq/L', min:99,   max:109,  crit_min:90,  crit_max:120 },
+      { id:'ca_t',  nome:'Cálcio total',   unidade:'mg/dL', min:11.2, max:13.6, crit_min:7.0, crit_max:16 },
+      { id:'p',     nome:'Fósforo',        unidade:'mg/dL', min:3.1,  max:5.6 },
+      { id:'mg',    nome:'Magnésio',       unidade:'mg/dL', min:1.8,  max:2.8 },
+    ],
+    metabolico: [
+      { id:'glic',  nome:'Glicose',         unidade:'mg/dL', min:75, max:115, crit_min:40, crit_max:250 },
+      { id:'trig',  nome:'Triglicerídeos',  unidade:'mg/dL', min:11, max:52,  crit_max:500 },
+      { id:'col',   nome:'Colesterol',      unidade:'mg/dL', min:75, max:150 },
+      { id:'lac',   nome:'Ácido lático',    unidade:'mmol/L', min:0, max:2.0, crit_max:6.0 },
+    ],
+  },
+};
+
+const STORAGE_KEY = 'equivet_clinica_sangue_v1';
+
+// Backend Railway (mesmo do Clínica). IA e leitura de PDF passam por aqui,
+// autenticadas pelo JWT da sessão Supabase — a chave da Anthropic fica no servidor.
+const BACKEND_URL = 'https://web-production-2f5bf.up.railway.app';
+const MODELO_LABEL = 'Claude Sonnet';   // o modelo é decidido no backend
+
+// Retorna o access_token da sessão logada, ou null.
+async function getSessionToken() {
+  try {
+    const { data: { session } } = await window.supabase.auth.getSession();
+    return (session && session.access_token) || null;
+  } catch (e) { return null; }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function montarParams() {
+  for (const [bloco, grupos] of Object.entries(PARAMS)) {
+    for (const [grupo, lista] of Object.entries(grupos)) {
+      const cont = document.getElementById('grid-' + grupo);
+      if (!cont) continue;
+      cont.innerHTML = '';
+      for (const p of lista) {
+        const div = document.createElement('div');
+        div.className = 'param';
+        div.id = 'p-' + p.id;
+        div.innerHTML = `
+          <div class="param-info">
+            <span class="param-name">${p.nome}</span>
+            <span class="param-ref">${formatarRef(p)}</span>
+          </div>
+          <div class="param-input-wrap">
+            <input type="number" step="any" id="i-${p.id}" oninput="validar('${p.id}')" />
+            <span class="param-unit">${p.unidade}</span>
+            <span class="param-flag" id="f-${p.id}"></span>
+          </div>
+        `;
+        cont.appendChild(div);
+      }
+    }
+  }
+}
+
+function formatarRef(p) {
+  return `Ref: ${p.min}–${p.max} ${p.unidade}`;
+}
+
+function getParam(id) {
+  for (const grupos of Object.values(PARAMS)) {
+    for (const lista of Object.values(grupos)) {
+      const found = lista.find(x => x.id === id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function validar(id) {
+  const p = getParam(id);
+  const input = document.getElementById('i-' + id);
+  const wrap  = document.getElementById('p-' + id);
+  const flag  = document.getElementById('f-' + id);
+  wrap.classList.remove('low','normal','high','crit');
+  flag.textContent = '';
+  const v = parseFloat(input.value);
+  if (isNaN(v) || input.value === '') { atualizarSummary(); salvar(); return; }
+  let estado = 'normal', flagText = 'N';
+  if (p.crit_min != null && v < p.crit_min) { estado = 'crit'; flagText = '↓↓'; }
+  else if (p.crit_max != null && v > p.crit_max) { estado = 'crit'; flagText = '↑↑'; }
+  else if (v < p.min) { estado = 'low';  flagText = '↓'; }
+  else if (v > p.max) { estado = 'high'; flagText = '↑'; }
+  wrap.classList.add(estado);
+  flag.textContent = flagText;
+  atualizarSummary();
+  salvar();
+}
+
+function atualizarSummary() {
+  const cnt = { low:0, normal:0, high:0, crit:0 };
+  document.querySelectorAll('.param').forEach(el => {
+    if (el.classList.contains('low')) cnt.low++;
+    else if (el.classList.contains('high')) cnt.high++;
+    else if (el.classList.contains('crit')) cnt.crit++;
+    else if (el.classList.contains('normal')) cnt.normal++;
+  });
+  document.getElementById('cnt-low').textContent    = cnt.low;
+  document.getElementById('cnt-normal').textContent = cnt.normal;
+  document.getElementById('cnt-high').textContent   = cnt.high;
+  document.getElementById('cnt-crit').textContent   = cnt.crit;
+}
+
+/* ============================================================
+   PERSISTÊNCIA (localStorage — offline)
+   ============================================================ */
+function salvar() {
+  const dados = coletarDados();
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(dados)); } catch(e){}
+}
+
+function carregar() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const dados = JSON.parse(raw);
+    for (const [k,v] of Object.entries(dados.paciente || {})) {
+      const el = document.getElementById('pac_' + k);
+      if (el) el.value = v;
+    }
+    for (const [id, val] of Object.entries(dados.valores || {})) {
+      const el = document.getElementById('i-' + id);
+      if (el) { el.value = val; validar(id); }
+    }
+  } catch(e) { console.warn('Falha ao carregar:', e); }
+}
+
+function coletarDados() {
+  const paciente = {};
+  ['nome','raca','idade','sexo','peso','proprietario','data','historico'].forEach(k => {
+    const el = document.getElementById('pac_' + k);
+    if (el) paciente[k] = el.value;
+  });
+  const valores = {};
+  for (const grupos of Object.values(PARAMS)) {
+    for (const lista of Object.values(grupos)) {
+      for (const p of lista) {
+        const el = document.getElementById('i-' + p.id);
+        if (el && el.value !== '') valores[p.id] = parseFloat(el.value);
+      }
+    }
+  }
+  return { paciente, valores, salvo_em: new Date().toISOString() };
+}
+
+function limparTudo() {
+  if (!confirm('Limpar todos os campos e remover dados salvos?')) return;
+  document.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.id === 'pac_raca') el.value = 'Equino';
+    else el.value = '';
+  });
+  document.querySelectorAll('.param').forEach(el => el.classList.remove('low','normal','high','crit'));
+  document.querySelectorAll('.param-flag').forEach(el => el.textContent = '');
+  atualizarSummary();
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function exportarJSON() {
+  const dados = coletarDados();
+  const blob = new Blob([JSON.stringify(dados, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const nome = (dados.paciente.nome || 'paciente').replace(/[^a-z0-9]/gi,'_');
+  a.href = url;
+  a.download = `equivet_sangue_${nome}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+function trocarAba(btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+}
+
+/* ============================================================
+   RESUMO OFFLINE — sem IA
+   ============================================================ */
+function listarAlteracoes() {
+  const alteracoes = [];
+  for (const grupos of Object.values(PARAMS)) {
+    for (const lista of Object.values(grupos)) {
+      for (const p of lista) {
+        const el = document.getElementById('i-' + p.id);
+        if (!el || el.value === '') continue;
+        const v = parseFloat(el.value);
+        if (isNaN(v)) continue;
+        const wrap = document.getElementById('p-' + p.id);
+        const classes = wrap.className;
+        let estado = null;
+        if (classes.includes('crit')) estado = 'CRÍTICO';
+        else if (classes.includes('high')) estado = 'ELEVADO';
+        else if (classes.includes('low')) estado = 'DIMINUÍDO';
+        if (estado) {
+          alteracoes.push({
+            nome: p.nome, valor: v, unidade: p.unidade,
+            ref: `${p.min}–${p.max}`, estado: estado,
+          });
+        }
+      }
+    }
+  }
+  return alteracoes;
+}
+
+function resumoOffline() {
+  const alt = listarAlteracoes();
+  let html = `<h3>Resumo de alterações</h3>`;
+  if (alt.length === 0) {
+    html += `<p>Nenhuma alteração detectada nos parâmetros preenchidos. Todos dentro dos intervalos de referência para equino adulto.</p>`;
+  } else {
+    html += `<ul>`;
+    for (const a of alt) {
+      const cor = a.estado === 'CRÍTICO' ? '#8B2522' : (a.estado === 'ELEVADO' ? '#C25450' : '#4A86C5');
+      html += `<li><strong style="color:${cor}">${a.estado}</strong> · ${a.nome}: <code>${a.valor} ${a.unidade}</code> <span style="color:#8E8470">(ref: ${a.ref})</span></li>`;
+    }
+    html += `</ul>`;
+  }
+  html += `<div class="disclaimer">Resumo automático baseado apenas em comparação com valores de referência. Para interpretação clínica integrada, use o botão <strong>Analisar por IA</strong>.</div>`;
+  abrirModal('Resumo offline', html);
+}
+
+/* ============================================================
+   CONTA / SESSÃO — login Supabase (compartilhado com o Clínica)
+   IA e PDF passam pelo backend autenticado; a chave Anthropic fica no servidor.
+   ============================================================ */
+async function abrirConfig() {
+  const { data: { session } } = await window.supabase.auth.getSession();
+  const user = session && session.user;
+
+  let html;
+  if (user) {
+    html = `
+      <h3>Conta conectada</h3>
+      <p style="font-size:13px;color:#6E6655">Você está logado como:</p>
+      <p style="font-family:'DM Mono',monospace;font-size:13px;color:#1A1A1A;margin-top:4px">${user.email || user.id}</p>
+      <p style="font-size:13px;color:#6E6655;margin-top:10px">Os botões <strong>Analisar por IA</strong> e <strong>Importar PDF</strong> usam o servidor EquiVet, com interpretação fundamentada na literatura indexada (Smith / Adams). Nenhuma chave fica no seu navegador.</p>
+      <div style="display:flex;gap:8px;margin-top:18px">
+        <button class="btn btn-secondary" onclick="fazerLogout()" style="color:#1A1A1A;border-color:#D5CFB8">Sair</button>
+      </div>
+      <div class="disclaimer">Validação por faixas de referência e resumo offline funcionam sem login.</div>
+    `;
+  } else {
+    html = `
+      <h3>Entrar</h3>
+      <p style="font-size:13px;color:#6E6655">Use a mesma conta do EquiVet Clínica. Login necessário apenas para <strong>Analisar por IA</strong> e <strong>Importar PDF</strong>.</p>
+      <div class="api-key-input" style="margin-top:12px">
+        <label>E-mail</label>
+        <input type="email" id="login-email" placeholder="voce@exemplo.com" autocomplete="username">
+      </div>
+      <div class="api-key-input" style="margin-top:10px">
+        <label>Senha</label>
+        <input type="password" id="login-senha" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+      </div>
+      <div id="login-erro" style="color:#8B2522;font-size:12px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" id="btn-login" onclick="fazerLogin()">Entrar</button>
+      </div>
+      <div class="disclaimer">Validação por faixas de referência e resumo offline funcionam sem login.</div>
+    `;
+  }
+  abrirModal('Conta EquiVet', html);
+}
+
+async function fazerLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const erro  = document.getElementById('login-erro');
+  const btn   = document.getElementById('btn-login');
+  erro.textContent = '';
+  if (!email || !senha) { erro.textContent = 'Preencha e-mail e senha.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  try {
+    const { error } = await window.supabase.auth.signInWithPassword({ email, password: senha });
+    if (error) { erro.textContent = 'Falha no login: ' + error.message; btn.disabled = false; btn.textContent = 'Entrar'; return; }
+    fecharModal();
+    atualizarBadgeSessao();
+    mostrarToast('✓ Conectado');
+  } catch (e) {
+    erro.textContent = 'Erro de conexão. Tente novamente.';
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+
+async function fazerLogout() {
+  try { await window.supabase.auth.signOut(); } catch (e) {}
+  fecharModal();
+  atualizarBadgeSessao();
+  mostrarToast('Sessão encerrada');
+}
+
+// Se não há sessão, abre o login e retorna false; senão retorna o token.
+async function exigirLogin() {
+  const token = await getSessionToken();
+  if (!token) { abrirConfig(); return null; }
+  return token;
+}
+
+async function atualizarBadgeSessao() {
+  const badge = document.getElementById('modelo-badge');
+  if (!badge) return;
+  const { data: { session } } = await window.supabase.auth.getSession();
+  if (session && session.user) {
+    const email = session.user.email || 'conectado';
+    badge.textContent = email.length > 18 ? email.slice(0,16) + '…' : email;
+    badge.style.color = '#7EB8A4';
+  } else {
+    badge.textContent = 'Entrar';
+    badge.style.color = '#8E8470';
+  }
+}
+
+function mostrarToast(msg) {
+  const existente = document.getElementById('toast');
+  if (existente) existente.remove();
+  const t = document.createElement('div');
+  t.id = 'toast';
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#0E0E0E;color:#E8E0D0;padding:10px 18px;border-radius:4px;border-left:3px solid #C9A84C;z-index:200;font-size:13px;font-family:DM Sans,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,0.2)';
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.transition='opacity 0.3s'; t.style.opacity='0'; setTimeout(()=>t.remove(), 300); }, 2500);
+}
+
+async function analisarIA() {
+  const dados = coletarDados();
+  const alt = listarAlteracoes();
+  const valoresPreenchidos = Object.keys(dados.valores).length;
+  if (valoresPreenchidos === 0) {
+    alert('Preencha ao menos um parâmetro antes de chamar a IA.');
+    return;
+  }
+
+  const token = await exigirLogin();
+  if (!token) return;   // exigirLogin abriu a tela de login
+
+  abrirModal('Análise por IA', `<div class="ai-loading"><div class="spinner"></div><span>Consultando ${MODELO_LABEL} (com literatura Smith/Adams)...</span></div>`);
+
+  // Quadro completo (paciente + valores + alterações) e resumo das alterações (query do RAG)
+  const quadro = montarPrompt(dados, alt);
+  const alteracoes = alt.length
+    ? alt.map(a => `${a.estado}: ${a.nome} = ${a.valor} ${a.unidade} (ref ${a.ref})`).join('; ')
+    : '';
+
+  const btnIA = document.getElementById('btn-ia');
+  btnIA.disabled = true;
+
+  try {
+    const resp = await fetch(BACKEND_URL + '/analisar-sangue', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      body: JSON.stringify({ quadro, alteracoes: alteracoes || null }),
+    });
+    if (resp.status === 401) {
+      abrirModal('Sessão expirada', `<p>Sua sessão expirou. <button class="btn btn-primary" onclick="fecharModal();abrirConfig()">Entrar novamente</button></p>`);
+      return;
+    }
+    if (!resp.ok) {
+      const errText = await resp.text().catch(()=> '');
+      throw new Error(`HTTP ${resp.status}${errText ? ': ' + errText.slice(0,200) : ''}`);
+    }
+    const json = await resp.json();
+    const texto = json.laudo || '(resposta vazia)';
+    const selo = json.tem_literatura
+      ? 'Fundamentado na literatura indexada (Smith / Adams).'
+      : 'Sem correspondência forte na literatura indexada — interpretação clínica geral.';
+    const html = `${markdownToHTML(texto)}<div class="disclaimer">${selo} Gerado por ${MODELO_LABEL}. Ferramenta de apoio diagnóstico — não substitui avaliação clínica completa pelo médico-veterinário.</div>`;
+    abrirModal('Análise por IA', html);
+  } catch (e) {
+    const html = `<div class="error-box"><strong>Erro na chamada IA:</strong><br>${e.message}</div>
+      <p style="margin-top:12px">Verifique:<br>· que você está conectado (⚙ Conta)<br>· sua conexão com a internet</p>`;
+    abrirModal('Erro', html);
+  } finally {
+    btnIA.disabled = false;
+  }
+}
+
+function montarPrompt(dados, alt) {
+  const p = dados.paciente;
+  let txt = `Você é um médico-veterinário especialista em medicina equina interna. Interprete o hemograma e/ou bioquímico a seguir de forma clínica e estruturada.\n\n`;
+  txt += `## PACIENTE\n`;
+  txt += `- Nome: ${p.nome || 'n/i'}\n`;
+  txt += `- Espécie/raça: ${p.raca || 'Equino'}\n`;
+  txt += `- Idade: ${p.idade || 'n/i'} anos\n`;
+  txt += `- Sexo: ${p.sexo || 'n/i'}\n`;
+  txt += `- Peso: ${p.peso || 'n/i'} kg\n`;
+  txt += `- Data da coleta: ${p.data || 'n/i'}\n`;
+  txt += `- Histórico breve: ${p.historico || 'não informado'}\n\n`;
+
+  txt += `## ALTERAÇÕES DETECTADAS (vs valor de referência equino adulto)\n`;
+  if (alt.length === 0) {
+    txt += `Nenhuma alteração — todos os parâmetros dentro da referência.\n\n`;
+  } else {
+    for (const a of alt) {
+      txt += `- ${a.estado}: ${a.nome} = ${a.valor} ${a.unidade} (ref: ${a.ref})\n`;
+    }
+    txt += `\n`;
+  }
+
+  txt += `## TODOS OS VALORES PREENCHIDOS\n`;
+  for (const [id, v] of Object.entries(dados.valores)) {
+    const par = getParam(id);
+    txt += `- ${par.nome}: ${v} ${par.unidade} (ref ${par.min}–${par.max})\n`;
+  }
+  txt += `\n`;
+
+  txt += `## TAREFA\n`;
+  txt += `Produza um laudo clínico estruturado em português com as seções:\n`;
+  txt += `## Síntese do quadro hematológico/bioquímico\n`;
+  txt += `## Hipóteses diagnósticas (em ordem de probabilidade)\n`;
+  txt += `## Diagnósticos diferenciais a considerar\n`;
+  txt += `## Exames complementares recomendados\n`;
+  txt += `## Conduta terapêutica e monitoramento sugeridos\n\n`;
+  txt += `Cite, quando aplicável, achados típicos descritos na literatura veterinária (Smith Large Animal Surgery, Adams Lameness, manuais AAEP). Seja objetivo, clinicamente útil e baseado em evidência. Não invente valores que não foram informados.`;
+
+  return txt;
+}
+
+/* ============================================================
+   IMPORTAÇÃO DE PDF — Claude lê PDF nativamente
+   ============================================================ */
+async function abrirPicker() {
+  const token = await exigirLogin();
+  if (!token) return;   // exigirLogin abriu a tela de login
+  document.getElementById('pdf-input').click();
+}
+
+async function processarPDF(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // permite reimportar mesmo arquivo
+  if (!file) return;
+
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Selecione um arquivo PDF.');
+    return;
+  }
+  const MAX_MB = 7;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    alert(`PDF muito grande (limite: ${MAX_MB} MB).`);
+    return;
+  }
+
+  abrirModal('Importando PDF',
+    `<div class="ai-loading"><div class="spinner"></div><span>Lendo PDF (${file.name}, ${(file.size/1024).toFixed(0)} KB)...</span></div>
+     <p style="text-align:center;color:#6E6655;font-size:12px;margin-top:8px">Claude está extraindo valores e gerando interpretação clínica. Isso pode levar 10-30 segundos.</p>`);
+
+  const btnPDF = document.getElementById('btn-pdf');
+  btnPDF.disabled = true;
+
+  try {
+    const base64 = await fileToBase64(file);
+    const resultado = await chamarClaudeComPDF(base64);
+    aplicarResultadoPDF(resultado, file.name);
+  } catch (e) {
+    const html = `<div class="error-box"><strong>Erro ao processar PDF:</strong><br>${e.message}</div>
+      <p style="margin-top:12px">Possíveis causas:<br>· sessão expirada (entre em ⚙ Conta)<br>· PDF protegido por senha<br>· PDF muito grande ou com muitas páginas<br>· conexão instável</p>`;
+    abrirModal('Erro na importação', html);
+  } finally {
+    btnPDF.disabled = false;
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      // result = "data:application/pdf;base64,<base64>"
+      const base64 = result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function chamarClaudeComPDF(base64) {
+  const token = await getSessionToken();
+  if (!token) throw new Error('Sessão ausente. Entre em ⚙ Conta.');
+  const schema = montarSchemaParaExtracao();
+
+  const resp = await fetch(BACKEND_URL + '/importar-pdf-lab', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+    },
+    body: JSON.stringify({ pdf_base64: base64, schema_valores: schema }),
+  });
+
+  if (resp.status === 401) {
+    throw new Error('Sessão expirada. Entre novamente em ⚙ Conta.');
+  }
+  if (!resp.ok) {
+    const errText = await resp.text().catch(()=> '');
+    throw new Error(`HTTP ${resp.status}${errText ? ': ' + errText.slice(0, 300) : ''}`);
+  }
+  const json = await resp.json();
+  const textoResposta = json.raw || '';
+
+  // Extrai JSON do response (tolerante a markdown wrap)
+  const jsonMatch = textoResposta.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Resposta da IA não contém JSON válido. Resposta: ' + textoResposta.slice(0, 200));
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    throw new Error('JSON inválido na resposta da IA: ' + e.message);
+  }
+  return parsed;
+}
+
+function montarSchemaParaExtracao() {
+  const linhas = [];
+  for (const [bloco, grupos] of Object.entries(PARAMS)) {
+    for (const [grupo, lista] of Object.entries(grupos)) {
+      for (const p of lista) {
+        linhas.push(`    // "${p.id}": número  // ${p.nome} (${p.unidade}, ref ${p.min}-${p.max})`);
+      }
+    }
+  }
+  return linhas.join('\n');
+}
+
+function aplicarResultadoPDF(resultado, nomeArquivo) {
+  // Preenche paciente
+  if (resultado.paciente) {
+    const map = { nome:'pac_nome', raca:'pac_raca', idade:'pac_idade', sexo:'pac_sexo',
+                  peso:'pac_peso', proprietario:'pac_proprietario', data:'pac_data', historico:'pac_historico' };
+    for (const [k, idCampo] of Object.entries(map)) {
+      const val = resultado.paciente[k];
+      if (val !== null && val !== undefined && val !== '') {
+        const el = document.getElementById(idCampo);
+        if (el) el.value = val;
+      }
+    }
+  }
+
+  // Preenche valores numéricos + valida
+  let preenchidos = 0;
+  const naoReconhecidos = [];
+  if (resultado.valores) {
+    for (const [id, valor] of Object.entries(resultado.valores)) {
+      const el = document.getElementById('i-' + id);
+      if (el && valor !== null && valor !== undefined && !isNaN(parseFloat(valor))) {
+        el.value = valor;
+        validar(id);
+        preenchidos++;
+      } else if (!el) {
+        naoReconhecidos.push(`${id}: ${valor}`);
+      }
+    }
+  }
+
+  salvar();
+  atualizarSummary();
+
+  // Monta modal de confirmação + interpretação
+  const alt = listarAlteracoes();
+  const cnt = { low:0, normal:0, high:0, crit:0 };
+  document.querySelectorAll('.param').forEach(el => {
+    if (el.classList.contains('low')) cnt.low++;
+    else if (el.classList.contains('high')) cnt.high++;
+    else if (el.classList.contains('crit')) cnt.crit++;
+    else if (el.classList.contains('normal')) cnt.normal++;
+  });
+
+  let html = `<div style="background:#FBF6E4;border-left:3px solid #C9A84C;padding:10px 14px;border-radius:0 4px 4px 0;margin-bottom:14px">
+    <strong>✓ ${preenchidos} valores extraídos de</strong> <code>${nomeArquivo}</code><br>
+    <span style="font-size:12px;color:#6E6655">${cnt.crit} críticos · ${cnt.high} elevados · ${cnt.low} diminuídos · ${cnt.normal} normais</span>
+  </div>`;
+
+  if (resultado.observacoes_extracao) {
+    html += `<div style="background:#F0F5FB;border-left:3px solid #4A86C5;padding:10px 14px;border-radius:0 4px 4px 0;margin-bottom:14px;font-size:13px">
+      <strong>Observações da extração:</strong><br>${resultado.observacoes_extracao}
+    </div>`;
+  }
+
+  if (naoReconhecidos.length > 0) {
+    html += `<details style="margin-bottom:14px;font-size:12px;color:#6E6655">
+      <summary style="cursor:pointer">Parâmetros do PDF fora do schema atual (${naoReconhecidos.length})</summary>
+      <ul style="margin-top:6px">${naoReconhecidos.map(x => `<li>${x}</li>`).join('')}</ul>
+    </details>`;
+  }
+
+  if (resultado.interpretacao_clinica) {
+    html += markdownToHTML(resultado.interpretacao_clinica);
+  }
+
+  html += `<div class="disclaimer">Valores extraídos automaticamente do PDF por ${MODELO_LABEL}. <strong>Confira no formulário</strong> antes de basear conduta. Ferramenta de apoio — não substitui avaliação clínica.</div>`;
+
+  abrirModal('PDF importado · Análise', html);
+}
+
+/* ============================================================
+   MODAL + MARKDOWN BÁSICO
+   ============================================================ */
+function abrirModal(titulo, html) {
+  document.getElementById('modal-title').textContent = titulo;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal').classList.add('show');
+}
+function fecharModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+function markdownToHTML(md) {
+  // Conversor mínimo: ## → h3, ### → h4, **x** → strong, - lista, parágrafos
+  const linhas = md.split('\n');
+  let html = '';
+  let inList = false;
+  for (let linha of linhas) {
+    linha = linha.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                 .replace(/`([^`]+)`/g, '<code style="background:#FAF0D0;padding:1px 4px;border-radius:2px">$1</code>');
+    if (/^##\s/.test(linha)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h3>${linha.replace(/^##\s/,'')}</h3>`;
+    } else if (/^###\s/.test(linha)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h4 style="font-family:'DM Sans',sans-serif;font-size:14px;margin-top:10px;color:#1A1A1A">${linha.replace(/^###\s/,'')}</h4>`;
+    } else if (/^[-*]\s/.test(linha)) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${linha.replace(/^[-*]\s/,'')}</li>`;
+    } else if (linha.trim() === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${linha}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  montarParams();
+  // Preenche data de hoje se vazio
+  const hoje = new Date().toISOString().slice(0,10);
+  document.getElementById('pac_data').value = hoje;
+  // Persistência: salva campos do paciente também
+  document.querySelectorAll('.patient-bar input, .patient-bar select').forEach(el => {
+    el.addEventListener('input', salvar);
+    el.addEventListener('change', salvar);
+  });
+  carregar();
+  atualizarSummary();
+  atualizarBadgeSessao();
+  // Reage a login/logout feitos em outra aba do mesmo domínio (ex.: no Clínica)
+  window.supabase.auth.onAuthStateChange(() => atualizarBadgeSessao());
+});
+
+// Fecha modal clicando fora
+document.getElementById('modal').addEventListener('click', (e) => {
+  if (e.target.id === 'modal') fecharModal();
+});
+// Esc fecha modal
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharModal(); });
+</script>
+</body>
+</html>
