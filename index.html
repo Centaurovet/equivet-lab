@@ -485,6 +485,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <button class="icon-btn" onclick="voltarClinica()" style="color:#d4a96a;border-color:#5a4a30">← Clínica</button>
       <button class="icon-btn" onclick="limparTudo()">Limpar</button>
       <button class="icon-btn" onclick="exportarJSON()">Exportar</button>
       <button class="icon-btn" onclick="window.print()">Imprimir</button>
@@ -709,6 +710,17 @@ const EXAME_LOCAL_ID = 'ex_' + Date.now().toString(36) + '_' + Math.random().toS
 // Vínculo com um atendimento do Clínica (via ?atend=<local_id>), ou null (avulso).
 let ATEND_LINK = null;
 
+// Volta ao EquiVet Clínica: tenta o histórico (mesma janela/PWA); senão navega direto.
+function voltarClinica() {
+  const url = 'https://centaurovet.com.br/equivet/equivet-clinica.html';
+  if (history.length > 1) {
+    history.back();
+    setTimeout(() => { location.href = url; }, 400); // se o back não sair da página, navega
+  } else {
+    location.href = url;
+  }
+}
+
 // Lê a sessão do localStorage SEM chamar getSession() (evita o lock que trava).
 function getSessaoLS() {
   for (let i=0;i<localStorage.length;i++){
@@ -749,7 +761,7 @@ function mostrarBannerVinculo() {
   const b = document.createElement('div');
   b.id = 'banner-vinculo';
   b.style.cssText = 'background:#1e2a1e;border-left:3px solid #7EB8A4;color:#CfeAd0;padding:8px 16px;font-size:13px;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:8px';
-  b.innerHTML = '🔗 Exame vinculado ao atendimento de <strong>' + (ATEND_LINK.paciente || 'paciente') + '</strong> no EquiVet Clínica. Ao salvar, ele aparecerá no prontuário.';
+  b.innerHTML = '🔗 Exame vinculado ao atendimento de <strong>' + (ATEND_LINK.paciente || 'paciente') + '</strong> no EquiVet Clínica. Ao salvar, ele aparecerá no prontuário. <a href="javascript:voltarClinica()" style="color:#d4a96a;font-weight:600;white-space:nowrap">← Voltar ao Clínica</a>';
   document.body.insertBefore(b, document.body.firstChild);
 }
 
